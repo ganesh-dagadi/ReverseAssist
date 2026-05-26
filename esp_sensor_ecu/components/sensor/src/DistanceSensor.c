@@ -14,15 +14,17 @@
 #define HC_SR04_TRIG_PIN 5
 #define ISR_QUEUE_LENGTH 100
 #define STATE_MACHINE_MEMORY 2048
+#define DISTANCE_OUT_QUEUE_LENGTH 100
 
 static QueueHandle_t echo_trig_queue;
 static TaskHandle_t echo_event_reading_task;
+QueueHandle_t distance_source_queue = NULL;  // actual definition
 
 int mock_sensor_init(DistanceSensor*);
 int mock_sensor_poll_distance(DistanceSensor*);
 int hc_sr04_sensor_init(DistanceSensor* );
 int hc_sr04_sensor_poll_distance(DistanceSensor*);
-void sensor_distance_calcule_task(void* params);
+void sensor_distance_calculate_task(void* params);
 
 struct DistanceSensor {
     int (*init)(DistanceSensor* self);
@@ -35,14 +37,14 @@ typedef struct {
     short sensor_id;
     bool is_high;
     int64_t timestamp;
-} Isr_Trig_Data;
+} IsrTrigData;
 
 
 static void IRAM_ATTR echo_isr_handler(void *arg) {
     BaseType_t task_woken = pdFALSE;
     bool is_high = gpio_get_level(HC_SR04_ECHO_PIN);
     int64_t timestamp = esp_timer_get_time();
-    Isr_Trig_Data event;
+    IsrTrigData event;
     // default sensor id for now
     event.sensor_id = 0;
     event.is_high = is_high;
@@ -67,12 +69,14 @@ DistanceSensor* create_distance_sensor(int id) {
         case 0:
             sensor->init = hc_sr04_sensor_init;
             sensor->poll_distance = hc_sr04_sensor_poll_distance;
+            sensor->sensor_data = NULL;
             break;
         default:
             ESP_LOGE(DISTANCE_SENSOR_TAG, "Unknown Distance sensor id");
             free(sensor);
             return NULL;
     }
+    distance_source_queue = xQueueCreate(DISTANCE_OUT_QUEUE_LENGTH, sizeof(DistanceData));
     return sensor;
 }
 
@@ -85,9 +89,46 @@ int poll_distance(DistanceSensor* sensor) {
 }
 
 void close_sensor(DistanceSensor* sensor) {
-    //TODO:free pointers held by sensor too
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Trying to close sensor");
+    if (sensor == NULL) {
+        ESP_LOGE(DISTANCE_SENSOR_TAG, "Sensor is null. Cant close. Bye bye");
+    }
+
+    if (sensor->sensor_data != NULL) {
+        ESP_LOGI(DISTANCE_SENSOR_TAG, "Freeing sensor Data");
+        free(sensor->sensor_data);
+    }
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Freeing sensor");
     free(sensor);
-    // stop the tasks
+    // stop the tasks and other resource
+    if (echo_event_reading_task != NULL) {
+        ESP_LOGI(DISTANCE_SENSOR_TAG, "Stopping echo reader task");
+        vTaskDelete(echo_event_reading_task);
+    }
+
+    if (echo_trig_queue != NULL) {
+        ESP_LOGI(DISTANCE_SENSOR_TAG, "Deleting echo reader queue");
+        vQueueDelete(echo_trig_queue);
+    }
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Close sensor done - exiting");
+}
+
+void sleep_sensor(DistanceSensor* sensor) {
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Trying to sleep the sensor");
+    if (sensor == NULL) {
+        ESP_LOGE(DISTANCE_SENSOR_TAG, "Sensor is NULL cant sleep");
+        return;
+    }
+    // clear exisiting echo events queue
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Clearing queue");
+    xQueueReset(echo_trig_queue);
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Pausing echo reading task");
+    vTaskSuspend(echo_event_reading_task);
+}
+
+void resume_sensor(DistanceSensor* sensor) {
+    ESP_LOGI(DISTANCE_SENSOR_TAG, "Resume echo reading task");
+    vTaskResume(echo_event_reading_task);
 }
 
 int mock_sensor_init(DistanceSensor* self) {
@@ -138,7 +179,7 @@ int hc_sr04_sensor_init(DistanceSensor* sensor) {
     }
 
     // Configure interrupt service routine
-    echo_trig_queue = xQueueCreate(ISR_QUEUE_LENGTH, sizeof(Isr_Trig_Data));
+    echo_trig_queue = xQueueCreate(ISR_QUEUE_LENGTH, sizeof(IsrTrigData));
     ret = gpio_install_isr_service(0);
     if (ret != ESP_OK) {
         ESP_LOGE(DISTANCE_SENSOR_TAG,
@@ -155,7 +196,7 @@ int hc_sr04_sensor_init(DistanceSensor* sensor) {
     }
 
     // create a task to read the timestamp and calculate distance
-    xTaskCreate(sensor_distance_calcule_task,
+    xTaskCreate(sensor_distance_calculate_task,
         "SENSOR_TRIG_DATA_READER_TASK",
          STATE_MACHINE_MEMORY,
          NULL,
@@ -177,14 +218,43 @@ int hc_sr04_sensor_poll_distance(DistanceSensor* sensor) {
     return 0;
 }
 
-void sensor_distance_calcule_task(void* params) {
+
+void sensor_distance_calculate_task(void* params) {
+    uint8_t previous_edge = 0;
+    uint64_t previous_time = 0L;
+    int curr_distance = 0;
     while (1) {
-        Isr_Trig_Data event;
+        IsrTrigData event;
         if (xQueueReceive(echo_trig_queue, &event, 0) == pdPASS) {
             // WE GOT SOME DATA
-            ESP_LOGI(DISTANCE_SENSOR_TAG, "Got Edge: %d, time: %lld \n",event.is_high, event.timestamp);
+            if (event.is_high) {
+                if (previous_edge == 0) {
+                    previous_edge = 1;
+                    previous_time = event.timestamp;
+                } else {
+                    ESP_LOGW(DISTANCE_SENSOR_TAG, "Invalid High edge received. Updating new timestamp");
+                    previous_time = event.timestamp;
+                }
+            } else {
+                if (previous_edge == 1) {
+                    uint64_t curr_time = event.timestamp;
+                    // Long overflow handled by unsigned long
+                    uint64_t time_delta = curr_time - previous_time;
+                    curr_distance = (0.0343 * time_delta) / 2;
+                    previous_edge = 0;
+                } else {
+                    ESP_LOGW(DISTANCE_SENSOR_TAG, "Invalid Low edge received. Resetting state");
+                    previous_edge = 0;
+                    previous_time = 0;
+                }
+            }
+            // ESP_LOGI(DISTANCE_SENSOR_TAG, "Got Edge: %d, time: %lld, distance : %d\n",event.is_high, event.timestamp, curr_distance);
+            DistanceData dis_data;
+            dis_data.distance = curr_distance;
+            dis_data.timestamp = previous_time; // we use the time at start of TRIG;
+            xQueueSend(distance_source_queue, &dis_data, 20);
         }
-        vTaskDelay(pdMS_TO_TICKS(75));
+        vTaskDelay(1);
     }
 }
 

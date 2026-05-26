@@ -4,12 +4,8 @@
 typedef enum {
     SLEEPING,
     STARTING,
-    STARTED,
-    RESTARTING,
-    RESTARTED,
-    SHUTDOWN,
-    PAUSE_SENSOR_INP,
-    PAUSE_STREAM_OUT
+    RUNNING,
+    ERROR,
 } StateMachineState;
 
 int init_state_machine(void);
