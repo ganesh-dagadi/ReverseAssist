@@ -5,7 +5,7 @@ typedef struct DistanceSensor DistanceSensor;
 
 typedef struct {
     uint64_t timestamp;
-    uint8_t distance;
+    uint16_t distance;
 } DistanceData;
 
 extern QueueHandle_t distance_source_queue;

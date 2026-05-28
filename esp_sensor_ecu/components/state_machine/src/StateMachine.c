@@ -11,7 +11,6 @@ static StateMachineState currState = SLEEPING;
 static TaskHandle_t poll_sensor_task;
 
 const char* STATE_MACHINE_TAG = "StateMachine";
-const int DISTANCE_POLL_DELAY = 1000; //ms
 
 void poll_distance_task(void* params) {
     while (1) {
