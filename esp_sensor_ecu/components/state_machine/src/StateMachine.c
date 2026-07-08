@@ -3,6 +3,7 @@
 #include "StateMachine.h"
 #include "DistanceSensor.h"
 #include "Filter.h"
+#include "Streamer.h"
 #include "esp_log.h"
 
 static DistanceSensor* distanceSensor;
@@ -63,6 +64,7 @@ int init_state_machine() {
     set_filter_strategy(MOVING_AVG_FILTER);
     start_distance_filter();
     // create the serializer
+    start_streamer();
     // plumbing of everything together
     currState = RUNNING;
     return 0;

@@ -5,6 +5,7 @@
 #include "DistanceSensor.h"
 
 extern QueueHandle_t distance_source_queue;
+extern QueueHandle_t filtered_distance_queue;
 
 typedef enum {
     MOVING_AVG_FILTER

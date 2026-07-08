@@ -1,5 +1,9 @@
 #ifndef STREAMER
 #define STREAMER
 
-int hi();
+#include "DistanceSensor.h"
+#include "Filter.h"
+
+extern QueueHandle_t filtered_distance_queue;
+int start_streamer();
 #endif

@@ -10,6 +10,7 @@
 #define SPIKE_THRESHOLD 100
 #define SPIKE_COUNT_PASS 3
 #define TAG "Filter"
+#define DISTANCE_OUT_QUEUE_LENGTH 100
 
 typedef struct {
     int arr[MOVING_AVG_QUEUE_SIZE];
@@ -21,6 +22,8 @@ typedef struct {
 static TaskHandle_t filter_task_handle = NULL;
 FilterStrategy curr_strategy;
 Queue moving_avg_queue;
+
+QueueHandle_t filtered_distance_queue = NULL;
 
 
 int pop_queue() {
@@ -70,6 +73,7 @@ int set_filter_strategy(FilterStrategy strategy) {
 }
 
 void start_distance_filter() {
+    filtered_distance_queue = xQueueCreate(DISTANCE_OUT_QUEUE_LENGTH, sizeof(DistanceData));
     xTaskCreate(filter_distance_task,
         "DISTANCE_FILTER_TASK",
         2048,
@@ -83,6 +87,7 @@ void stop_distance_filter() {
     if (filter_task_handle != NULL) {
         vTaskDelete(filter_task_handle);
     }
+    vQueueDelete(filtered_distance_queue);
 }
 
 void filter_distance_task(void*) {
@@ -114,7 +119,10 @@ void filter_distance_task(void*) {
 
             // get filtered distance
             int filtered_distance = get_movin_average_queue();
-            ESP_LOGI(TAG, "Filtered moving average: %d", filtered_distance);
+            DistanceData dis_data;
+            dis_data.distance = filtered_distance;
+            dis_data.timestamp = esp_timer_get_time(); 
+            xQueueSend(filtered_distance_queue, &dis_data, 20);
         }
         vTaskDelay(2);
     }
