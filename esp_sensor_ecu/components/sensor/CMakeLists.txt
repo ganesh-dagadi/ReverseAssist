@@ -1,4 +1,4 @@
-idf_component_register(SRCS "src/DistanceSensor.c"
+idf_component_register(SRCS "src/DistanceSensor.c" "src/DistanceSensorHal.c"
                     INCLUDE_DIRS "include"
-                    REQUIRES esp_driver_gpio esp_timer
+                    REQUIRES os logger
                     )

@@ -1,85 +1,89 @@
-#include "freertos/FreeRTOS.h"
-#include "freertos/task.h"
+#include "logger.h"
+#include "os.h"
 #include "StateMachine.h"
 #include "DistanceSensor.h"
-#include "Filter.h"
-#include "Streamer.h"
-#include "esp_log.h"
+#define DISTANCE_SENSOR_TASK_PRIORITY 7
+#define STATE_MACHINE_SLEEP_DUR 250
+#define DISTANCE_SENSOR_QUEUE_LEN 20 // at 10hz, 2 seconds worth of queue capacity
+#define DISTANCE_SENSOR_TASK_SPACE 2048
+#define STATE_DISTANCE_CMD_QUEUE_LEN 10
+#define TAG "StateMachine"
 
-static DistanceSensor* distanceSensor;
-static TaskHandle_t sensorTask;
-static StateMachineState currState = SLEEPING;
-static TaskHandle_t poll_sensor_task;
+StateMachineState mState = SLEEPING;
 
-const char* STATE_MACHINE_TAG = "StateMachine";
+Os_TaskHandle sensor_task;
+Os_TaskHandle filter_task;
+Os_TaskHandle streamer_task;
+Os_TaskHandle heartbeat_task;
+Os_TaskHandle property_task;
 
-void poll_distance_task(void* params) {
-    while (1) {
-        if (distanceSensor == NULL) {
-            ESP_LOGE(STATE_MACHINE_TAG, "Distance Sensor is null");
-        } else {
-            poll_distance(distanceSensor);
-        }
-        vTaskDelay(pdMS_TO_TICKS(DISTANCE_POLL_DELAY));
-    }
-}
+Os_QueueHandle sensor_filter_q;
+Os_QueueHandle filter_streamer_q;
+Os_QueueHandle state_distance_cmd_q;
 
-int create_distance_sensors() {
-    DistanceSensor* lDistanceSensor = create_distance_sensor(0);
-    if (lDistanceSensor == NULL) {
-        ESP_LOGE(STATE_MACHINE_TAG, "Failed to create distance sensor");
-        return -1;
-    }
-
-    if (init_distance_sensor(lDistanceSensor) == -1) {
-        ESP_LOGE(STATE_MACHINE_TAG, "Failed to initialize distance sensor");
-        close_sensor(lDistanceSensor);
-        return -1;
-    }
-
-    distanceSensor = lDistanceSensor;
-    return 0;
+void distance_sensor_status_callback(int sensor_id, int status) {
+    log_info(TAG, "Received status: %d for sensor: %d", status, sensor_id);
 }
 
 int init_state_machine() {
-    // create and initialize the sensor
-    currState = STARTING;
-    if (create_distance_sensors() != 0) {
-        ESP_LOGE(STATE_MACHINE_TAG, "Creating Distance sensor failed");
-        currState = ERROR;
-        return -1;
-    }  
+    // read from config once config is ready
 
-    // task to poll the sensor
-    xTaskCreate(
-        poll_distance_task,
-        "DISTANCE_SENSOR_TASK",
-        2048,
-        NULL,
-        7,
-        &poll_sensor_task
-    );
-    
-    // open, configure and setup the filter
-    set_filter_strategy(MOVING_AVG_FILTER);
-    start_distance_filter();
-    // create the serializer
-    start_streamer();
-    // plumbing of everything together
-    currState = RUNNING;
+    // create the queues
+    if(create_queue(DISTANCE_SENSOR_QUEUE_LEN, sizeof(DistanceData), &sensor_filter_q) != 0) {
+        log_error(TAG, "Failed to create queue for distance sensor");
+        return -1;
+    }
+    if(create_queue(DISTANCE_SENSOR_QUEUE_LEN, sizeof(DistanceData), &filter_streamer_q) != 0) {
+        log_error(TAG, "Failed to create queue for distance sensor");
+        return -1;
+    }
+
+    if (create_queue(STATE_DISTANCE_CMD_QUEUE_LEN, sizeof(DistanceSensorCommands), &state_distance_cmd_q) != 0){
+        log_error(TAG, "Failed to create queue for state and distance command passing");
+        return -1;
+    }
+    set_distance_sensor_queue(sensor_filter_q);
+    set_state_machine_queue_for_distance_service(state_distance_cmd_q);
+    register_status_callback_for_distance_service(distance_sensor_status_callback);
+
+    DistanceSensorCommands cmd = DISTANCE_SENSOR_CMD_START;
+    push_queue(state_distance_cmd_q, &cmd);
+
+    // start the sub tasks
+    if(create_task(distance_sensor_task_main, "Distance Sensor Task", DISTANCE_SENSOR_TASK_PRIORITY, DISTANCE_SENSOR_TASK_SPACE, &sensor_task) != 0) {
+        log_error(TAG, "Failed to start Sensor task. Aborting");
+        return -1;
+    }
+
     return 0;
+
 }
 
 void start_state_machine(void* params) {
     while (1) {
-        if (currState == SLEEPING) {
-            init_state_machine();
-        } else if (currState == RUNNING) {
-            // NOTHING TO DO
-            
-        } else if (currState == ERROR) {
-            ESP_LOGE(STATE_MACHINE_TAG, "Error state in state machine");
+        switch (mState) {
+        case SLEEPING: {
+            log_info(TAG, "State machine in SLEEPING State. Begin Initialization");
+            if(init_state_machine() != 0) {
+                log_error(TAG, "State Machine Init failed");
+                mState = ERROR;
+            } else {
+                log_info(TAG, "State Machine init complete");
+                mState = RUNNING;
+            }
+            break;
         }
-        vTaskDelay(50);
+        case ERROR: {
+            log_error(TAG, "Error state");
+            break;
+        }
+        case RUNNING: {
+            log_debug(TAG, "Running state");
+            break;
+        }
+        default:
+            break;
+        }
+        sleep_task(STATE_MACHINE_SLEEP_DUR);
     }
 }
