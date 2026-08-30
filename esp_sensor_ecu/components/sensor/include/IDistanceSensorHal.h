@@ -11,18 +11,15 @@ typedef enum DistanceSensorStatus
     DISTANCE_SENSOR_SIGNAL_LOST
 } DistanceSensorStatus;
 
-typedef struct TimeData {
-    int64_t trig_time;
-    int64_t recv_time;
-} TimeData;
 
+int setup_driver();
 int open_sensor(int sensor_id);
 int close_sensor(int sensor_id);
-int register_time_callback(void (*distance_callback)(int, TimeData*));
-int unregister_time_callback();
+int register_distance_callback(void (*distance_callback)(int, float));
+int unregister_distance_callback();
 int register_status_callback(void (*status_handler)(int,int));
 int unregister_status_callback();
-int stream_distance(int sensor_id);
-int stop_stream_distance(int sensor_id);
+int stream_distance();
+int stop_stream_distance();
 
 #endif

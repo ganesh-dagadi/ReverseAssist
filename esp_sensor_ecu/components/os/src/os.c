@@ -65,6 +65,24 @@ int push_queue(Os_QueueHandle handle, void* data) {
     } else return -1;
 }
 
+int suspend_task(Os_TaskHandle task) {
+    if (task == NULL) {
+        log_error(TAG, "Task handle is null. Unable to suspend");
+        return -1;
+    }
+    vTaskSuspend((TaskHandle_t)task);
+    return 0;
+}
+
+int resume_task(Os_TaskHandle task) {
+    if (task == NULL) {
+        log_error(TAG, "Task handle is null. Unable to resume");
+        return -1;
+    }
+    vTaskResume((TaskHandle_t)task);
+    return 0;
+}
+
 int poll_queue_blocking(Os_QueueHandle handle, void* data) {
     if (handle == NULL) {
         log_error(TAG, "Queue handle is null. Unable to poll");

@@ -6,7 +6,7 @@ typedef struct DistanceSensor DistanceSensor;
 
 typedef struct {
     uint8_t sensor_id;
-    uint16_t distance;
+    float distance;
 } DistanceData;
 
 typedef enum DistanceSensorCommands {

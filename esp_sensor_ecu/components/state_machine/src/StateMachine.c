@@ -79,6 +79,8 @@ void start_state_machine(void* params) {
         }
         case RUNNING: {
             log_debug(TAG, "Running state");
+            DistanceSensorCommands cmd = DISTANCE_SENSOR_CMD_RESUME;
+            push_queue(state_distance_cmd_q, &cmd);
             break;
         }
         default:

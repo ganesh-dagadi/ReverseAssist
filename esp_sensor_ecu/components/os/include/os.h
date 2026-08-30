@@ -15,4 +15,7 @@ int create_task(Os_TaskFunction task, const char* name, uint8_t priority, uint32
 int stop_task(Os_TaskHandle task);
 void sleep_task(uint32_t delay);
 
+int suspend_task(Os_TaskHandle task);
+int resume_task(Os_TaskHandle task);
+
 #endif
