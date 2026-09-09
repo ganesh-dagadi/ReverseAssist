@@ -2,6 +2,8 @@
 #include "os.h"
 #include "StateMachine.h"
 #include "DistanceSensor.h"
+#include "Filter.h"
+#include "Streamer.h"
 #define DISTANCE_SENSOR_TASK_PRIORITY 7
 #define STATE_MACHINE_SLEEP_DUR 250
 #define DISTANCE_SENSOR_QUEUE_LEN 20 // at 10hz, 2 seconds worth of queue capacity
@@ -45,6 +47,21 @@ int init_state_machine() {
     set_distance_sensor_queue(sensor_filter_q);
     set_state_machine_queue_for_distance_service(state_distance_cmd_q);
     register_status_callback_for_distance_service(distance_sensor_status_callback);
+
+    if (set_sensor_count(1) != 0) {
+        log_error(TAG, "Failed to configure distance sensor count");
+        return -1;
+    }
+
+    if (start_distance_filter(sensor_filter_q, filter_streamer_q) != 0) {
+        log_error(TAG, "Failed to start distance filter");
+        return -1;
+    }
+    if (start_streamer(filter_streamer_q) != 0) {
+        log_error(TAG, "Failed to start distance streamer");
+        stop_distance_filter();
+        return -1;
+    }
 
     DistanceSensorCommands cmd = DISTANCE_SENSOR_CMD_START;
     push_queue(state_distance_cmd_q, &cmd);

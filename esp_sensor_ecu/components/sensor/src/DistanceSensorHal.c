@@ -10,34 +10,47 @@
 
 #define TAG "DistanceSensorHAL"
 
-typedef struct {
+typedef struct
+{
     uint8_t trig_pin;
     uint8_t echo_pin;
-}SensorConfig;
+    short op_state; // 0 is ok and < 0 is error (-1 -> stream failure, -2 -> sensor setup failure)
+} SensorConfig;
 
-typedef struct {
+typedef struct
+{
     uint64_t timestamp;
     bool is_high;
 } IsrData;
 
-typedef struct {
+typedef struct
+{
     SensorConfig sensors[1];
 } UltrasonicConfig;
 
 UltrasonicConfig mConfig;
 QueueHandle_t isr_queue;
 TaskHandle_t driver_task_handle;
+
 void (*distance_callback_to_client)(int, float) = NULL;
-void (*status_handler)(int,int) = NULL;
+void (*status_handler)(int, int) = NULL;
 
-int getSensorListLength() {
-    return sizeof(mConfig.sensors) / sizeof (mConfig.sensors[0]);
+int getSensorListLength()
+{
+    return sizeof(mConfig.sensors) / sizeof(mConfig.sensors[0]);
 }
-void distance_driver_task(void *args) {
-    while (1) {
-        for (int currSensor = 0; currSensor < getSensorListLength(); currSensor++) {
+void distance_driver_task(void *args)
+{
+    while (1)
+    {
+        for (int currSensor = 0; currSensor < getSensorListLength(); currSensor++)
+        {
             SensorConfig sensor = mConfig.sensors[currSensor];
-
+            if (sensor.op_state < -1)
+            {
+                log_error(TAG, "Sensor %d init failed, skipping.", currSensor);
+                continue;
+            }
             gpio_set_level(sensor.trig_pin, 0);
             vTaskDelay(pdMS_TO_TICKS(2));
 
@@ -48,56 +61,92 @@ void distance_driver_task(void *args) {
             IsrData data;
             bool is_prev_high = 0;
             uint64_t prev_high = 0;
-            while (true) {
-                if (xQueueReceive(isr_queue, &data, pdMS_TO_TICKS(50)) == pdTRUE) {
-                    if (data.is_high){
-                        if (is_prev_high) {
+            while (true)
+            {
+                if (xQueueReceive(isr_queue, &data, pdMS_TO_TICKS(50)) == pdTRUE)
+                {
+                    if (data.is_high)
+                    {
+                        if (is_prev_high)
+                        {
                             log_error(TAG, "Two consecutive high for sensor: %d. skipping measurement", currSensor);
+                            if (mConfig.sensors[currSensor].op_state == 0)
+                            {
+                                mConfig.sensors[currSensor].op_state = -1;
+                                status_handler(currSensor, -1);
+                            }
                             break;
-                        } else {
+                        }
+                        else
+                        {
                             is_prev_high = true;
                             prev_high = data.timestamp;
                         }
-                    } else {
-                        if (is_prev_high != 1) {
+                    }
+                    else
+                    {
+                        if (is_prev_high != 1)
+                        {
                             log_error(TAG, "Two consecutive low for sensor: %d. skipping measurement", currSensor);
+                            if (mConfig.sensors[currSensor].op_state == 0)
+                            {
+                                mConfig.sensors[currSensor].op_state = -1;
+                                status_handler(currSensor, -1);
+                            }
                             break;
-                        } else {
+                        }
+                        else
+                        {
+                            // sensor recovered
+                            if (mConfig.sensors[currSensor].op_state < 0)
+                            {
+                                mConfig.sensors[currSensor].op_state = 0;
+                                status_handler(currSensor, 0);
+                            }
                             uint64_t timediff = data.timestamp - prev_high;
                             float distance = (0.0343 * timediff) / 2;
                             log_info(TAG, "Distance: %f", distance);
+                            distance_callback_to_client(currSensor, distance);
                             break;
                         }
                     }
-                    
-                } else {
+                }
+                else
+                {
                     log_error(TAG, "Sensor %d did not receive an echo pulse", currSensor);
+                    if (mConfig.sensors[currSensor].op_state == 0)
+                    {
+                        mConfig.sensors[currSensor].op_state = -1;
+                        status_handler(currSensor, -1);
+                    }
+                    break;
                 }
             }
-            
         }
 
         vTaskDelay(pdMS_TO_TICKS(50));
     }
 }
 
-int setup_driver() {
+int setup_driver()
+{
     log_info(TAG, "Setting up Distance sensor driver");
     SensorConfig sensor_one;
     sensor_one.trig_pin = 5;
     sensor_one.echo_pin = 4;
+    sensor_one.op_state = 0;
     mConfig.sensors[0] = sensor_one;
     gpio_install_isr_service(0);
     isr_queue = xQueueCreate(10, sizeof(IsrData)); // hold a single timestamp
-    
+
     if (xTaskCreate(
-        distance_driver_task,
-        "DISTANCE_DRIVER_TASK",
-        2048,
-        NULL,
-        8,
-        &driver_task_handle
-    ) != pdPASS) {
+            distance_driver_task,
+            "DISTANCE_DRIVER_TASK",
+            2048,
+            NULL,
+            8,
+            &driver_task_handle) != pdPASS)
+    {
         log_error(TAG, "Error creating task \n");
         return -1;
     }
@@ -107,7 +156,8 @@ int setup_driver() {
     return 0;
 }
 
-static void IRAM_ATTR echo_isr_handler(void *arg) {
+static void IRAM_ATTR echo_isr_handler(void *arg)
+{
     int64_t now = esp_timer_get_time();
     gpio_num_t pin = (gpio_num_t)(uintptr_t)arg;
     bool is_high = gpio_get_level(pin);
@@ -118,15 +168,16 @@ static void IRAM_ATTR echo_isr_handler(void *arg) {
     xQueueSendFromISR(
         isr_queue,
         &data,
-        &higher_priority_task_woken
-    );
+        &higher_priority_task_woken);
 
-    if (higher_priority_task_woken) {
+    if (higher_priority_task_woken)
+    {
         portYIELD_FROM_ISR();
     }
 }
 
-int open_sensor(int sensor_id) {
+int open_sensor(int sensor_id)
+{
     log_info(TAG, "Opening sensor with id %d", sensor_id);
     SensorConfig sensor = mConfig.sensors[sensor_id];
 
@@ -141,14 +192,16 @@ int open_sensor(int sensor_id) {
 
     esp_err_t ret = gpio_config(&gpio_config_trig);
 
-    if (ret != ESP_OK) {
+    if (ret != ESP_OK)
+    {
         log_error(TAG,
-                "Failed to configure TRIG pin for HC_SR04 sensor with id %d: %s",sensor_id,
-                esp_err_to_name(ret));
+                  "Failed to configure TRIG pin for HC_SR04 sensor with id %d: %s", sensor_id,
+                  esp_err_to_name(ret));
+        mConfig.sensors[sensor_id].op_state = -2;
         return -1;
     }
 
-    //configure ECHO
+    // configure ECHO
     gpio_config_t gpio_config_echo = {0};
 
     gpio_config_echo.pin_bit_mask = (1ULL << sensor.echo_pin);
@@ -159,20 +212,24 @@ int open_sensor(int sensor_id) {
 
     ret = gpio_config(&gpio_config_echo);
 
-    if (ret != ESP_OK) {
+    if (ret != ESP_OK)
+    {
         log_error(TAG,
-                "Failed to configure ECHO pin for HC_SR04 sensor with id %d: %s",sensor_id,
-                esp_err_to_name(ret));
+                  "Failed to configure ECHO pin for HC_SR04 sensor with id %d: %s", sensor_id,
+                  esp_err_to_name(ret));
+        mConfig.sensors[sensor_id].op_state = -2;
         return -1;
     }
 
     // setup interrupt
 
     ret = gpio_isr_handler_add(sensor.echo_pin, echo_isr_handler, (void *)(uintptr_t)sensor.echo_pin);
-    if (ret != ESP_OK) {
+    if (ret != ESP_OK)
+    {
         log_error(TAG,
-                "Failed to add Handler to ISR for ECHO pin: %s",
-                esp_err_to_name(ret));
+                  "Failed to add Handler to ISR for ECHO pin: %s",
+                  esp_err_to_name(ret));
+        mConfig.sensors[sensor_id].op_state = -2;
         return -1;
     }
 
@@ -180,34 +237,42 @@ int open_sensor(int sensor_id) {
     return 0;
 }
 
-int close_sensor(int sensor_id) {
+int close_sensor(int sensor_id)
+{
     log_info(TAG, "Closing sensor with id %d", sensor_id);
     return 0;
 }
 
-int register_distance_callback(void (*distance_callback_from_client)(int,float)) {
+int register_distance_callback(void (*distance_callback_from_client)(int, float))
+{
     log_info(TAG, "Registering Distance callback");
     distance_callback_to_client = distance_callback_from_client;
     return 0;
 }
 
-int unregister_distance_callback() {
+int unregister_distance_callback()
+{
     log_info(TAG, "Unregistering distance callback");
     return 0;
 }
 
-int register_status_callback(void (*status_callback)(int, int)) {
+int register_status_callback(void (*status_callback)(int, int))
+{
     log_info(TAG, "Registering status callback");
+    status_handler = status_callback;
     return 0;
 }
 
-int unregister_status_callback() {
+int unregister_status_callback()
+{
     log_info(TAG, "Unregistering status callback");
     return 0;
 }
 
-int stream_distance() {
-    if (driver_task_handle == NULL) {
+int stream_distance()
+{
+    if (driver_task_handle == NULL)
+    {
         log_error(TAG, "Driver task handle NULL. Cannot start streaming");
         return -1;
     }
@@ -216,8 +281,10 @@ int stream_distance() {
     return 0;
 }
 
-int stop_stream_distance() {
-    if (driver_task_handle == NULL) {
+int stop_stream_distance()
+{
+    if (driver_task_handle == NULL)
+    {
         log_error(TAG, "Driver task handle NULL. Cannot stop streaming");
         return -1;
     }
@@ -225,4 +292,3 @@ int stop_stream_distance() {
     log_info(TAG, "Stopped distance streaming");
     return 0;
 }
-

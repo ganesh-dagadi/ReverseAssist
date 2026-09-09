@@ -119,7 +119,7 @@ void distance_sensor_task_main(void *params)
 
 void distance_callback(int sensor_id, float distance)
 {
-    log_debug(TAG, "Received distance data %f for sensor %d", distance, sensor_id);
+    log_info(TAG, "Received distance data %f for sensor %d", distance, sensor_id);
     DistanceData currData;
     currData.sensor_id = sensor_id;
     currData.distance = distance;
@@ -128,4 +128,5 @@ void distance_callback(int sensor_id, float distance)
 
 void sensor_status_callback(int sensor_id, int status)
 {
+    log_info(TAG, "Status update %d for sensor %d", status, sensor_id);
 }
