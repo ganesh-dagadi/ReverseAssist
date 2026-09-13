@@ -21,6 +21,7 @@ Os_TaskHandle property_task;
 
 Os_QueueHandle sensor_filter_q;
 Os_QueueHandle filter_streamer_q;
+Os_QueueHandle sensor_status_q;
 Os_QueueHandle state_distance_cmd_q;
 
 void distance_sensor_status_callback(int sensor_id, int status) {
@@ -39,12 +40,17 @@ int init_state_machine() {
         log_error(TAG, "Failed to create queue for distance sensor");
         return -1;
     }
+    if (create_queue(STATE_DISTANCE_CMD_QUEUE_LEN, sizeof(SensorStatusData), &sensor_status_q) != 0) {
+        log_error(TAG, "Failed to create queue for sensor status updates");
+        return -1;
+    }
 
     if (create_queue(STATE_DISTANCE_CMD_QUEUE_LEN, sizeof(DistanceSensorCommands), &state_distance_cmd_q) != 0){
         log_error(TAG, "Failed to create queue for state and distance command passing");
         return -1;
     }
     set_distance_sensor_queue(sensor_filter_q);
+    set_sensor_status_queue(sensor_status_q);
     set_state_machine_queue_for_distance_service(state_distance_cmd_q);
     register_status_callback_for_distance_service(distance_sensor_status_callback);
 
@@ -57,7 +63,7 @@ int init_state_machine() {
         log_error(TAG, "Failed to start distance filter");
         return -1;
     }
-    if (start_streamer(filter_streamer_q) != 0) {
+    if (start_streamer(filter_streamer_q, sensor_status_q) != 0) {
         log_error(TAG, "Failed to start distance streamer");
         stop_distance_filter();
         return -1;

@@ -34,3 +34,7 @@ void log_error(const char* tag, const char* fmt, ...) {
     va_end(args);
     ESP_LOGE(tag, "%s", buf);
 }
+
+void log_dump(const char* tag, uint8_t* buf, size_t len) {
+    ESP_LOG_BUFFER_HEX(tag, buf, len);
+}

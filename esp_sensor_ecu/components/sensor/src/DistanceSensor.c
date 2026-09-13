@@ -5,6 +5,7 @@
 #define DISTANCE_SENSOR_SLEEP_DUR 100 // Sample at 10Hz
 
 Os_QueueHandle distance_data_queue;
+Os_QueueHandle sensor_status_queue;
 Os_QueueHandle state_machine_commands_queue;
 char m_is_streaming = 0;
 
@@ -17,6 +18,12 @@ void set_distance_sensor_queue(Os_QueueHandle queue)
 {
     log_info(TAG, "Setting distance sensor queue");
     distance_data_queue = queue;
+}
+
+void set_sensor_status_queue(Os_QueueHandle queue)
+{
+    log_info(TAG, "Setting sensor status queue");
+    sensor_status_queue = queue;
 }
 
 void set_state_machine_queue_for_distance_service(Os_QueueHandle queue)
@@ -129,4 +136,12 @@ void distance_callback(int sensor_id, float distance)
 void sensor_status_callback(int sensor_id, int status)
 {
     log_info(TAG, "Status update %d for sensor %d", status, sensor_id);
+    if (sensor_status_queue == NULL) {
+        return;
+    }
+
+    SensorStatusData status_data;
+    status_data.sensor_id = sensor_id;
+    status_data.status = status;
+    push_queue(sensor_status_queue, &status_data);
 }

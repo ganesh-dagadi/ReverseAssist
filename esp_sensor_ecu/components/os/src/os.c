@@ -93,3 +93,16 @@ int poll_queue_blocking(Os_QueueHandle handle, void* data) {
         return 0;
     } else return -1;
 }
+
+int poll_queue_non_blocking(Os_QueueHandle handle, void* data) {
+    if (handle == NULL) {
+        log_error(TAG, "Queue handle is null. Unable to poll non-blocking");
+        return -1;
+    }
+
+    if (xQueueReceive(handle, data, 0) == pdPASS) {
+        return 0;
+    }
+
+    return -1;
+}
