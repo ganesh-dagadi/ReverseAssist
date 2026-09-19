@@ -25,10 +25,10 @@ static uint8_t PROTOCOL_VERSION_ONE = 1;
 /* 
 Stream packet protocol
 
-Header          |  Payload                          | CRC
-=== === =======  === === === === === === === ===    ====
-ver p.len option|  size in bytes mentioned in header|
-1   1     1      |  key=value;key=value              |   
+SOF | Header          |  Payload                          | CRC
+=== | === === =======  === === === === === === === ===    ====
+    | ver p.len option|  size in bytes mentioned in header|
+0x40| 1   1     1      |  key=value;key=value             |
 === === =======  === === === === === === ===  ===    ====
 */
 
@@ -116,7 +116,7 @@ void status_streamer_task_runnable(void*) {
 
             size_t payload_size = calculate_status_payload_size(&status_data);
             size_t header_size = calculate_header_size();
-            size_t total_packet_size = header_size + payload_size + 1;
+            size_t total_packet_size = 1 + header_size + payload_size + 1; //1 byte for SOF, 1 byte for CRC
             uint8_t* buf = (uint8_t*) malloc(sizeof(uint8_t) * total_packet_size);
             if (!buf) {
                 log_error(TAG, "Unable to allocate buffer for status packet");
@@ -135,7 +135,7 @@ void distance_streamer_task_runnable(void*) {
             log_info(TAG, "Filtered distance data: %f, from sensor: %d", dis_data.distance, dis_data.sensor_id);
             size_t payload_size = calculate_payload_size(&dis_data);
             size_t header_size = calculate_header_size();
-            size_t total_packet_size = header_size + payload_size + 1; //1 byte CRC
+            size_t total_packet_size = 1 + header_size + payload_size + 1; //1 byte for SOF, 1 byte for CRC
             uint8_t* buf = (uint8_t*) malloc(sizeof(uint8_t) * total_packet_size);
             if (!buf) {
                 log_error(TAG, "Unable to allocate buffer for Data packet");
@@ -176,6 +176,6 @@ void uart_rx_task_runnable(void*) {
 }
 
 void dump_buffer(uint8_t* buf, size_t len) {
-        log_dump(TAG, buf, len);
+    log_dump(TAG, buf, len);
 }
 

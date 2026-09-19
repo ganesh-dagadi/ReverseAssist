@@ -63,6 +63,8 @@ void append_crc(uint8_t* buffer, size_t buf_len)
 
 void serialize_data(const DistanceData* data, uint8_t* buffer, size_t payload_len) {
     uint8_t* cursor = buffer;
+    // Write the SOF 
+    *cursor++ = 0x40;
     // write the header
     *cursor++ = VERSION;
     *cursor++ = payload_len;
@@ -73,11 +75,12 @@ void serialize_data(const DistanceData* data, uint8_t* buffer, size_t payload_le
     snprintf(payload, payload_len + 1, SENSOR_ID_KEY"=%u;"DISTANCE_KEY"=%.2f", data->sensor_id, data->distance);
     memcpy(cursor, payload, payload_len);
     cursor += payload_len;
-    append_crc(buffer, calculate_header_size() + payload_len);
+    append_crc(buffer, 1 + calculate_header_size() + payload_len); // 1 is for SOF
 }
 
 void serialize_status_data(const SensorStatusData* data, uint8_t* buffer, size_t payload_len) {
     uint8_t* cursor = buffer;
+    *cursor++ = 0x40;
     *cursor++ = VERSION;
     *cursor++ = payload_len;
     *cursor++ = 0; // options
@@ -86,5 +89,5 @@ void serialize_status_data(const SensorStatusData* data, uint8_t* buffer, size_t
     snprintf(payload, payload_len + 1, SENSOR_ID_KEY"=%u;"STATUS_KEY"=%d", data->sensor_id, data->status);
     memcpy(cursor, payload, payload_len);
     cursor += payload_len;
-    append_crc(buffer, calculate_header_size() + payload_len);
+    append_crc(buffer, 1 + calculate_header_size() + payload_len); // 1 is for SOF
 }
