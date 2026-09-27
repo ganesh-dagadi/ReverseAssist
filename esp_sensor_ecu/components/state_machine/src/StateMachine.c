@@ -28,6 +28,11 @@ void distance_sensor_status_callback(int sensor_id, int status) {
     log_info(TAG, "Received status: %d for sensor: %d", status, sensor_id);
 }
 
+void uart_command_callback(DistanceSensorCommands command) {
+    log_info(TAG, "Received command from Control : %d", command);
+    push_queue(state_distance_cmd_q, &command);
+}
+
 int init_state_machine() {
     // read from config once config is ready
 
@@ -63,7 +68,7 @@ int init_state_machine() {
         log_error(TAG, "Failed to start distance filter");
         return -1;
     }
-    if (start_streamer(filter_streamer_q, sensor_status_q) != 0) {
+    if (start_streamer(filter_streamer_q, sensor_status_q, uart_command_callback) != 0) {
         log_error(TAG, "Failed to start distance streamer");
         stop_distance_filter();
         return -1;
@@ -75,6 +80,12 @@ int init_state_machine() {
     // start the sub tasks
     if(create_task(distance_sensor_task_main, "Distance Sensor Task", DISTANCE_SENSOR_TASK_PRIORITY, DISTANCE_SENSOR_TASK_SPACE, &sensor_task) != 0) {
         log_error(TAG, "Failed to start Sensor task. Aborting");
+        return -1;
+    }
+
+    DistanceSensorCommands resume_cmd = DISTANCE_SENSOR_CMD_RESUME;
+    if (push_queue(state_distance_cmd_q, &resume_cmd) != 0) {
+        log_error(TAG, "Failed to queue initial sensor resume command");
         return -1;
     }
 
@@ -102,8 +113,6 @@ void start_state_machine(void* params) {
         }
         case RUNNING: {
             log_debug(TAG, "Running state");
-            DistanceSensorCommands cmd = DISTANCE_SENSOR_CMD_RESUME;
-            push_queue(state_distance_cmd_q, &cmd);
             break;
         }
         default:

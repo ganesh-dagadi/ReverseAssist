@@ -9,12 +9,14 @@
 #include "os.h"
 
 #define TAG "DistanceSensorHAL"
+#define MAX_DISTANCE_THRESHOLD 400.0
+#define MIN_DISTANCE_THRESHOLD 5.0 
 
 typedef struct
 {
     uint8_t trig_pin;
     uint8_t echo_pin;
-    short op_state; // 0 is ok and < 0 is error (-1 -> stream failure, -2 -> sensor setup failure)
+    short op_state; // 0 is ok and < 0 is error (-1 -> stream failure, -2 -> distance out of bounds failure, -3 -> sensor init failure)
 } SensorConfig;
 
 typedef struct
@@ -46,14 +48,13 @@ void distance_driver_task(void *args)
         for (int currSensor = 0; currSensor < getSensorListLength(); currSensor++)
         {
             SensorConfig sensor = mConfig.sensors[currSensor];
-            if (sensor.op_state < -1)
+            if (sensor.op_state < -2)
             {
                 log_error(TAG, "Sensor %d init failed, skipping.", currSensor);
                 continue;
             }
             gpio_set_level(sensor.trig_pin, 0);
             vTaskDelay(pdMS_TO_TICKS(2));
-
             gpio_set_level(sensor.trig_pin, 1);
             esp_rom_delay_us(11);
             gpio_set_level(sensor.trig_pin, 0);
@@ -97,15 +98,24 @@ void distance_driver_task(void *args)
                         }
                         else
                         {
-                            // sensor recovered
+                            uint64_t timediff = data.timestamp - prev_high;
+                            float distance = (0.0343 * timediff) / 2;
+                            // log_info(TAG, "Distance: %f", distance);
+                            if ((distance > MAX_DISTANCE_THRESHOLD) || (distance < MIN_DISTANCE_THRESHOLD)) {
+                                if (mConfig.sensors[currSensor].op_state != -2) {
+                                    status_handler(currSensor, -2);
+                                    mConfig.sensors[currSensor].op_state = -2;
+                                }
+                                break;
+                            }
+                            // recovered only if distance is valid
                             if (mConfig.sensors[currSensor].op_state < 0)
                             {
+                                // sensor recovered
+                                log_info(TAG, "Resetting sensor to operational");
                                 mConfig.sensors[currSensor].op_state = 0;
                                 status_handler(currSensor, 0);
                             }
-                            uint64_t timediff = data.timestamp - prev_high;
-                            float distance = (0.0343 * timediff) / 2;
-                            log_info(TAG, "Distance: %f", distance);
                             distance_callback_to_client(currSensor, distance);
                             break;
                         }
@@ -116,6 +126,7 @@ void distance_driver_task(void *args)
                     log_error(TAG, "Sensor %d did not receive an echo pulse", currSensor);
                     if (mConfig.sensors[currSensor].op_state == 0)
                     {
+                        log_info(TAG, "Setting sensor to not operational");
                         mConfig.sensors[currSensor].op_state = -1;
                         status_handler(currSensor, -1);
                     }
@@ -134,7 +145,9 @@ int setup_driver()
     SensorConfig sensor_one;
     sensor_one.trig_pin = 5;
     sensor_one.echo_pin = 4;
-    sensor_one.op_state = 0;
+    // initialize with -1 so that initial low received
+    // on startup is not notified as sensor error
+    sensor_one.op_state = -1; 
     mConfig.sensors[0] = sensor_one;
     gpio_install_isr_service(0);
     isr_queue = xQueueCreate(10, sizeof(IsrData)); // hold a single timestamp
@@ -197,7 +210,7 @@ int open_sensor(int sensor_id)
         log_error(TAG,
                   "Failed to configure TRIG pin for HC_SR04 sensor with id %d: %s", sensor_id,
                   esp_err_to_name(ret));
-        mConfig.sensors[sensor_id].op_state = -2;
+        mConfig.sensors[sensor_id].op_state = -3;
         return -1;
     }
 
@@ -217,7 +230,7 @@ int open_sensor(int sensor_id)
         log_error(TAG,
                   "Failed to configure ECHO pin for HC_SR04 sensor with id %d: %s", sensor_id,
                   esp_err_to_name(ret));
-        mConfig.sensors[sensor_id].op_state = -2;
+        mConfig.sensors[sensor_id].op_state = -3;
         return -1;
     }
 
@@ -229,7 +242,7 @@ int open_sensor(int sensor_id)
         log_error(TAG,
                   "Failed to add Handler to ISR for ECHO pin: %s",
                   esp_err_to_name(ret));
-        mConfig.sensors[sensor_id].op_state = -2;
+        mConfig.sensors[sensor_id].op_state = -3;
         return -1;
     }
 

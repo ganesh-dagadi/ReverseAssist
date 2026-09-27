@@ -1,7 +1,9 @@
 #include "Streamer.h"
 #include "logger.h"
 #include "serializer.h"
+#include "deserializer.h"
 #include "UartDriver.h"
+#include "os.h"
 
 #define TAG "Uart Streamer"
 #define UART_TX_QUEUE_LENGTH 20
@@ -20,7 +22,7 @@ static Os_TaskHandle uart_rx_task_handle = NULL;
 static Os_QueueHandle filtered_distance_queue = NULL;
 static Os_QueueHandle status_queue = NULL;
 static Os_QueueHandle uart_tx_queue = NULL;
-static uint8_t PROTOCOL_VERSION_ONE = 1;
+static StreamerCommandCallback command_callback = NULL;
 
 /* 
 Stream packet protocol
@@ -43,13 +45,16 @@ typedef struct {
     size_t len;
 } StreamData;
 
-int start_streamer(Os_QueueHandle input_queue, Os_QueueHandle status_input_queue) {
+int start_streamer(Os_QueueHandle input_queue,
+                   Os_QueueHandle status_input_queue,
+                   StreamerCommandCallback input_command_callback) {
     if (input_queue == NULL || status_input_queue == NULL || status_streamer_task_handle != NULL || distance_streamer_task_handle != NULL) {
         return -1;
     }
 
     filtered_distance_queue = input_queue;
     status_queue = status_input_queue;
+    command_callback = input_command_callback;
 
     if (create_queue(UART_TX_QUEUE_LENGTH, sizeof(StreamData), &uart_tx_queue) != 0) {
         log_error(TAG, "Failed to create UART TX queue");
@@ -151,7 +156,7 @@ void uart_tx_task_runnable(void*) {
     while (1) {
         StreamData data;
         if (poll_queue_blocking(uart_tx_queue, &data) == 0) {
-            dump_buffer(data.buf, data.len);
+            // dump_buffer(data.buf, data.len);
             if (uart_driver_write(UART_PORT_NUM, data.buf, data.len) < 0) {
                 log_error(TAG, "UART write failed");
             }
@@ -162,16 +167,19 @@ void uart_tx_task_runnable(void*) {
 
 void uart_rx_task_runnable(void*) {
     uint8_t rx_buf[64];
+    Deserializer deserializer;
+    deserializer_init(&deserializer, command_callback);
+
     while (1) {
         size_t available = 0;
         if (uart_driver_get_bytes_available(UART_PORT_NUM, &available) == 0 && available > 0) {
             size_t to_read = (available > sizeof(rx_buf)) ? sizeof(rx_buf) : available;
             int received = uart_driver_read(UART_PORT_NUM, rx_buf, to_read, 0);
             if (received > 0) {
-                log_info(TAG, "UART RX: received %d bytes", received);
-                // TODO: parse protocol frames here when command protocol is implemented
+                deserializer_process(&deserializer, rx_buf, (size_t)received);
             }
         }
+        sleep_task(50);
     }
 }
 

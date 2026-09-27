@@ -4,5 +4,9 @@
 #include "DistanceSensor.h"
 #include "os.h"
 
-int start_streamer(Os_QueueHandle input_queue, Os_QueueHandle status_queue);
+typedef void (*StreamerCommandCallback)(DistanceSensorCommands command);
+
+int start_streamer(Os_QueueHandle input_queue,
+				   Os_QueueHandle status_queue,
+				   StreamerCommandCallback command_callback);
 #endif
