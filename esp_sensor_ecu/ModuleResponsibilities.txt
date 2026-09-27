@@ -1,0 +1,29 @@
+State machine
+  States:
+     1. IDLE
+     2. RUNNING
+     3. ERROR
+  IDLE: Keep heartbeat service running, listen to property updates from property service
+  RUNNING: Start the sensor, filter and streamer tasks
+  ERROR: Monitor for tasks status and set streamer to error mode.
+
+Sensor Task
+  Ping the driver, listen to ISR, and push the distance into queue
+  Control signals from state machine
+
+Filter Task
+  Read from the queue, filter for bad signals (spikes), apply moving avg
+  Push to streamer queue
+
+Streamer task
+  Package data into packets, CRC, timestamp, sensor position on car, send to transport driver
+
+heartbeat task
+  Send periodic heart beats to transport driver
+
+Property task
+  Listen to property HAL updates for Properties and push events to state machine
+
+
+
+

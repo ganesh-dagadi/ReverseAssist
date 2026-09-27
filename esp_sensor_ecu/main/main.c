@@ -8,10 +8,6 @@
 const char* TAG = "Main";
 void app_main(void) {
     ESP_LOGI(TAG , "Started Main \n");
-    if (init_state_machine() == -1) {
-        ESP_LOGE(TAG , "Initializing State machine failed \n");
-        return;
-    }
     ESP_LOGI(TAG, "Starting Main State Machine");
     xTaskCreate(start_state_machine,
         "STATE_MACHINE_TASK",

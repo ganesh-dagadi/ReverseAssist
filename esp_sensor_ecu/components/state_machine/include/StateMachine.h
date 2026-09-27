@@ -5,11 +5,11 @@
 typedef enum {
     SLEEPING,
     STARTING,
+    IDLE,
     RUNNING,
-    ERROR,
+    ERROR
 } StateMachineState;
 
-int init_state_machine(void);
 void start_state_machine(void *params);
 
 #endif // STATE_MACHINE_H

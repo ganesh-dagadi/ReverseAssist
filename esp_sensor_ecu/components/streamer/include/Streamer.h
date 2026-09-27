@@ -2,8 +2,11 @@
 #define STREAMER
 
 #include "DistanceSensor.h"
-#include "Filter.h"
+#include "os.h"
 
-extern QueueHandle_t filtered_distance_queue;
-int start_streamer();
+typedef void (*StreamerCommandCallback)(DistanceSensorCommands command);
+
+int start_streamer(Os_QueueHandle input_queue,
+				   Os_QueueHandle status_queue,
+				   StreamerCommandCallback command_callback);
 #endif
