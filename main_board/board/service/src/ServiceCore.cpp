@@ -1,29 +1,30 @@
 #include "ServiceCore.hpp"
-#include "iostream"
+#include "Logging.hpp"
 
-#include "UARTStreamReceiver.hpp"
-#include "UARTStreamSender.hpp"
+#include "UARTSerialDevice.hpp"
 
 using namespace std;
 
 bool isTerminated = false;
 
 ServiceCore::ServiceCore()
-        :mLogger(Logger::getInstance()),
-        mStreamReceiver(make_unique<UARTStreamReceiver>()),
-        mReceiver(DataReceiver(*mStreamReceiver, mDeserializer, mReceiverQueue)),
-        mStreamSender(make_unique<UARTStreamSender>()),
-        mTransmitter(DataTransmiter(*mStreamSender, mSerializer, mTransmitterQueue))
-        {}  
+    : mSerialDevice(make_shared<UARTSerialDevice>()),
+      mReceiver(mSerialDevice, mDeserializer, mReceiverQueue),
+      mTransmitter(mSerialDevice, mSerializer, mTransmitterQueue),
+      mLogger(Logger::getInstance()) {}
 
 int ServiceCore::startServiceCore() {
-    while (!isTerminated) {
-        cout << "Hello \n";
-    }
+    mReceiver.start();
+    return 0;
+}
+
+int ServiceCore::resumeServiceCore() {
+    mReceiver.start();
     return 0;
 }
 
 void ServiceCore::stopServiceCore() {
-    cout << "Stop service received inside Service core \n";
+    mLogger.info("ServiceCore: Stop signal received");
+    mReceiver.stop();
     isTerminated = true;
 }

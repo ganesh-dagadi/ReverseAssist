@@ -1,25 +1,26 @@
 #pragma once
 
 #include "DataReceiver.hpp"
-#include "DataTransmiter.hpp"
+#include "DataSender.hpp"
 #include "Queue.hpp"
 #include "Logging.hpp"
-#include "memory"
+#include "SerialDevice.hpp"
+#include <memory>
 
 class ServiceCore {
 private:
-    std::unique_ptr<IStreamReceiver> mStreamReceiver;
+    std::shared_ptr<SerialDevice> mSerialDevice;
     Deserializer mDeserializer;
     Queue mReceiverQueue;
     DataReceiver mReceiver;
-    std::unique_ptr<IStreamSender> mStreamSender;
     Serializer mSerializer;
     Queue mTransmitterQueue;
-    DataTransmiter mTransmitter;
+    DataSender mTransmitter;
     Logger& mLogger;
 
 public:
     ServiceCore();
     int startServiceCore();
+    int resumeServiceCore();
     void stopServiceCore();
 };

@@ -5,11 +5,10 @@ TARGET = parkassist_service
 SRC = src/main.cpp \
 	src/ServiceCore.cpp \
 	src/DataReceiver.cpp \
-	src/DataTransmiter.cpp \
+	src/DataSender.cpp \
 	src/Queue.cpp \
 	src/Logging.cpp \
-	src/UARTStreamReceiver.cpp \
-	src/UARTStreamSender.cpp
+	src/UARTSerialDevice.cpp
 
 OBJ = $(patsubst src/%.cpp,build/%.o,$(SRC))
 
