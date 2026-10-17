@@ -8,7 +8,8 @@ SRC = src/main.cpp \
 	src/DataSender.cpp \
 	src/Queue.cpp \
 	src/Logging.cpp \
-	src/UARTSerialDevice.cpp
+	src/UARTSerialDevice.cpp \
+	src/Deserializer.cpp
 
 OBJ = $(patsubst src/%.cpp,build/%.o,$(SRC))
 

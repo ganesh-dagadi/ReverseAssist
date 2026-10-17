@@ -9,7 +9,7 @@
 
 class DataReceiver {
 private:
-	const Deserializer& mDeserializer;
+	Deserializer& mDeserializer;
 	std::shared_ptr<SerialDevice> mSerialDevice;
 	Queue& mDataQueue;
 	bool mIsStarted = false;
@@ -22,7 +22,7 @@ private:
 	void data_receiver_main();
 
 public:
-	DataReceiver(const std::shared_ptr<SerialDevice>& serialDevice, const Deserializer& deserializer, Queue& dataQueue)
+	DataReceiver(const std::shared_ptr<SerialDevice>& serialDevice, Deserializer& deserializer, Queue& dataQueue)
 		: mDeserializer(deserializer), mSerialDevice(serialDevice), mDataQueue(dataQueue) {}
 	
 	/*
@@ -38,4 +38,6 @@ public:
 		throws IllegalStateException
 	*/
 	void stop();
+
+	void init();
 };

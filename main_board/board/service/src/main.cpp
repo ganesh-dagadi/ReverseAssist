@@ -6,7 +6,7 @@
 
 int main() {
     Logger::getInstance().info("Main: Start");
-
+    Logger::getInstance().setFileSink("./log.txt");
     sigset_t signals;
     sigemptyset(&signals);
     sigaddset(&signals, SIGINT);

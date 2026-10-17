@@ -9,6 +9,7 @@
 
 class ServiceCore {
 private:
+    const char* mSerialDevicePath = "/dev/ttyACM1";
     std::shared_ptr<SerialDevice> mSerialDevice;
     Deserializer mDeserializer;
     Queue mReceiverQueue;

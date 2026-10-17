@@ -8,12 +8,17 @@ using namespace std;
 bool isTerminated = false;
 
 ServiceCore::ServiceCore()
-    : mSerialDevice(make_shared<UARTSerialDevice>()),
+    : mSerialDevice(make_shared<UARTSerialDevice>(mSerialDevicePath)),
       mReceiver(mSerialDevice, mDeserializer, mReceiverQueue),
       mTransmitter(mSerialDevice, mSerializer, mTransmitterQueue),
       mLogger(Logger::getInstance()) {}
 
 int ServiceCore::startServiceCore() {
+    if (!mSerialDevice->setupDevice()) {
+        mLogger.error("FATAL: failed to setup serial device");
+        // TODO: notify HMI if needed;
+        return -1;
+    }
     mReceiver.start();
     return 0;
 }
