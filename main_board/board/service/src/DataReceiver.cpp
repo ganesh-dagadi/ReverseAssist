@@ -5,10 +5,6 @@
 #include <utility>
 #include <stdexcept>
 
-void DataReceiver::payload_callback(deserializer::MessageType type, MessageFrame payload) {
-    
-}
-
 void DataReceiver::data_receiver_main() {
     Logger::getInstance().info("DataReceiver: thread run");
     uint8_t buf[16];
