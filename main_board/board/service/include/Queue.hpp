@@ -3,19 +3,18 @@
 #include <cstddef>
 #include <queue>
 #include <string>
-
-class Message {
-
-};
+#include <variant>
+#include "SensorData.hpp"
+#include <mutex>
 
 class Queue {
 private:
-	std::queue<Message> messages_;
+	std::queue<SensorData> messages_;
 	std::string queueFullStatus_ = "DROP_OLDEST";
+	std::mutex mLock;
 
 public:
-	int push(const Message& message);
-	Message pop();
-	bool isEmpty() const;
-	const std::string& fullStatus() const;
+	int push(const SensorData& message);
+	SensorData pop();
+	bool isEmpty();
 };

@@ -19,6 +19,7 @@ int ServiceCore::startServiceCore() {
         // TODO: notify HMI if needed;
         return -1;
     }
+    mReceiver.init();
     mReceiver.start();
     return 0;
 }

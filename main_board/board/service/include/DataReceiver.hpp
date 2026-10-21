@@ -20,7 +20,7 @@ private:
 	std::thread mReceiverThread;
 
 	void data_receiver_main();
-
+	void payload_callback(deserializer::MessageType, MessageFrame);
 public:
 	DataReceiver(const std::shared_ptr<SerialDevice>& serialDevice, Deserializer& deserializer, Queue& dataQueue)
 		: mDeserializer(deserializer), mSerialDevice(serialDevice), mDataQueue(dataQueue) {}

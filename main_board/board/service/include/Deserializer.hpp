@@ -1,6 +1,7 @@
 #pragma once
 #include <cstddef>
 #include <cstdint>
+#include <functional>
 
 namespace deserializer {
     enum MessageType {
@@ -16,17 +17,25 @@ namespace deserializer {
     };
 };
 
-class DistancePayload {
-    public:
-    uint8_t sensor_id;
-    float distance;
-};
 
-class StatusPayload {
-    public:
-    uint8_t sensor_id;
-    int status;
-};
+typedef struct {
+	uint8_t sof;
+	uint8_t version;
+	uint8_t payload_length;
+	uint8_t options;
+	deserializer::MessageType type;
+	union {
+		struct {
+			unsigned int sensor_id;
+			float distance;
+		} distance;
+		struct {
+			unsigned int sensor_id;
+			int status;
+		} status;
+	} data;
+	uint8_t crc;
+} MessageFrame;
 
 class Deserializer {
 private:
@@ -38,13 +47,12 @@ private:
     int8_t mHeaderVersion = -1;
     int8_t mPayloadLength = 0;
     int8_t mOptions = -1;
-    void (*payload_callback)(deserializer::MessageType, void*);
+    std::function<void(deserializer::MessageType, MessageFrame)> payload_callback = NULL;
     uint8_t calculateCrc();
     void resetFrameState();
 
     size_t getRequiredFrameSize();
 public:
-    void registerPayloadCallback(void (*callback)(deserializer::MessageType type,
-            void* payload));
+    void registerPayloadCallback(std::function<void(deserializer::MessageType, MessageFrame)>);
     bool deserialize_data(uint8_t* buffer, size_t readSize);
 };

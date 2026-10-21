@@ -13,29 +13,6 @@
 #define DISTANCE_KEY "distance"
 #define STATUS_KEY "status"
 
-typedef enum {
-	MESSAGE_DISTANCE,
-	MESSAGE_STATUS
-} MessageType;
-
-typedef struct {
-	uint8_t sof;
-	uint8_t version;
-	uint8_t payload_length;
-	uint8_t options;
-	MessageType type;
-	union {
-		struct {
-			unsigned int sensor_id;
-			float distance;
-		} distance;
-		struct {
-			unsigned int sensor_id;
-			int status;
-		} status;
-	} data;
-	uint8_t crc;
-} MessageFrame;
 
 static void print_frame(const MessageFrame *frame)
 {
@@ -43,7 +20,7 @@ static void print_frame(const MessageFrame *frame)
         "version=" + std::to_string(frame->version) +
         " options=" + std::to_string(frame->options) + " ";
 
-    if (frame->type == MESSAGE_DISTANCE) {
+    if (frame->type == deserializer::DISTANCE_DATA) {
         message +=
             "sensor_id=" + std::to_string(frame->data.distance.sensor_id) +
             " distance=" + std::to_string(frame->data.distance.distance);
@@ -73,7 +50,7 @@ static bool parse_payload(const uint8_t *payload, size_t payload_length,
 		   &frame->data.distance.sensor_id,
 		   &frame->data.distance.distance, &consumed) == 2 &&
 	    (size_t)consumed == payload_length) {
-		frame->type = MESSAGE_DISTANCE;
+		frame->type = deserializer::DISTANCE_DATA;
 		return true;
 	}
 
@@ -81,7 +58,7 @@ static bool parse_payload(const uint8_t *payload, size_t payload_length,
 		   &frame->data.status.sensor_id,
 		   &frame->data.status.status, &consumed) == 2 &&
 	    (size_t)consumed == payload_length) {
-		frame->type = MESSAGE_STATUS;
+		frame->type = deserializer::STATUS_DATA;
 		return true;
 	}
 
@@ -117,34 +94,34 @@ uint8_t Deserializer::calculateCrc() {
     return crc ^ 0xFF;
 }
 
-void Deserializer::registerPayloadCallback(void (*func)(deserializer::MessageType, void*)) {
+void Deserializer::registerPayloadCallback(std::function<void(deserializer::MessageType, MessageFrame)> func) {
     payload_callback = func;
 }
 
 bool Deserializer::deserialize_data(uint8_t* buffer, size_t readSize) { 
-    Logger::getInstance().debug("Deserializer: Received new buffer. size: " + std::to_string(readSize));
+    // Logger::getInstance().debug("Deserializer: Received new buffer. size: " + std::to_string(readSize));
     while (mBufIdx < readSize) {
         switch (mState) {
             case deserializer::NO_SOF:
             if (buffer[mBufIdx] != 0x40) {
-                Logger::getInstance().debug("Deserializer: SOF not found. ignoring");
+                // Logger::getInstance().debug("Deserializer: SOF not found. ignoring");
             } else {
-                Logger::getInstance().info("Deserializer: SOF found. Starting frame");
+                // Logger::getInstance().info("Deserializer: SOF found. Starting frame");
                 mState = deserializer::READ_HEADER;
             }
             break;
             case deserializer::READ_HEADER:
             if (mHeaderVersion == -1) {
-                Logger::getInstance().debug("Deserializer: Reading the header");
+                // Logger::getInstance().debug("Deserializer: Reading the header");
                 mHeaderVersion = buffer[mBufIdx];
-                Logger::getInstance().info("Header Version" + std::to_string(mHeaderVersion));
+                // Logger::getInstance().info("Header Version" + std::to_string(mHeaderVersion));
             } else if (mPayloadLength == -1) {
                 mPayloadLength = buffer[mBufIdx];
-                Logger::getInstance().info("Payload length Version" + std::to_string(mPayloadLength));
+                // Logger::getInstance().info("Payload length Version" + std::to_string(mPayloadLength));
             } else {
                 mOptions = buffer[mBufIdx];
-                Logger::getInstance().info("Reading options" + std::to_string(mOptions));
-                Logger::getInstance().debug("Deserializer: Done reading header.");
+                // Logger::getInstance().info("Reading options" + std::to_string(mOptions));
+                // Logger::getInstance().debug("Deserializer: Done reading header.");
                 mFrameData = (uint8_t*)calloc(this->getRequiredFrameSize(), sizeof(uint8_t));
                 if (mFrameData == NULL) {
                     this->resetFrameState();
@@ -158,7 +135,7 @@ bool Deserializer::deserialize_data(uint8_t* buffer, size_t readSize) {
             }
             break;
             case deserializer::READ_PAYLOAD:
-            Logger::getInstance().debug("Deserializer: Reading payload.");
+            // Logger::getInstance().debug("Deserializer: Reading payload.");
             if (mPayloadRead < mPayloadLength) {
                 mFrameData[mFrameIdx++] = buffer[mBufIdx];
                 mPayloadRead++;
@@ -169,7 +146,7 @@ bool Deserializer::deserialize_data(uint8_t* buffer, size_t readSize) {
             }
             break;
             case deserializer::CALCULATE_CRC:
-            Logger::getInstance().info("Deserializer: Calculating CRC.");
+            // Logger::getInstance().info("Deserializer: Calculating CRC.");
             mFrameData[mFrameIdx] = buffer[mBufIdx];
             uint8_t calculatedCrc = this->calculateCrc();
             if (mFrameData[mFrameIdx] != calculatedCrc) {
@@ -189,7 +166,15 @@ bool Deserializer::deserialize_data(uint8_t* buffer, size_t readSize) {
 						&frame)) {
 					Logger::getInstance().error("Invalid payload");
 				} else {
-					print_frame(&frame);
+                    if (payload_callback != NULL) {
+                        if (frame.type == deserializer::DISTANCE_DATA) {
+                            payload_callback(deserializer::DISTANCE_DATA, frame);
+                        } else if (frame.type == deserializer::STATUS_DATA) {
+                            payload_callback(deserializer::STATUS_DATA, frame);
+                        }
+                    } else {
+                        Logger::getInstance().error("Deserializer: Payload callback is NULL");
+                    }
 				}
             }
             resetFrameState();
